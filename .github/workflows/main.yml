@@ -3,50 +3,55 @@ name: Extract and Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract zip if present
+      - name: Extract ZIP
         run: |
-          ZIP=$(find . -maxdepth 2 -name "*.zip" | head -1)
+          ZIP=$(find . -name "*.zip" | head -n 1)
+
           if [ -n "$ZIP" ]; then
-            echo "Found zip: $ZIP"
-            unzip -o "$ZIP" -d _tmp
-            INNER=$(ls _tmp/)
-            COUNT=$(ls _tmp/ | wc -l)
-            if [ "$COUNT" -eq 1 ]; then
-              cp -r _tmp/$INNER/. .
-            else
-              cp -r _tmp/. .
-            fi
-            rm -rf _tmp "$ZIP"
-            echo "Extraction done"
+            echo "ZIP found: $ZIP"
+            mkdir extracted
+            unzip -o "$ZIP" -d extracted
           else
-            echo "No zip found, using repo files directly"
+            echo "No ZIP found"
           fi
+
+      - name: Find Flutter Project
+        id: project
+        run: |
+          PROJECT=$(find . -name pubspec.yaml | head -n 1 | xargs dirname)
+          echo "Project=$PROJECT"
+          echo "PROJECT_DIR=$PROJECT" >> $GITHUB_ENV
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: zulu
+          java-version: 17
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
 
-      - name: Get dependencies
+      - name: Flutter Pub Get
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get
 
       - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: attendance-app-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
